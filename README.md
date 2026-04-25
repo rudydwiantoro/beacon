@@ -59,12 +59,14 @@ Notes:
    - `Family/API key`: same as `BEACON_API_KEY`
 5. Tap `Settings` to customize:
    - Base mode (`Eco`, `Balanced`, `Live`)
-   - Custom interval (seconds, `0` = auto from mode)
-   - Min distance update (meters)
+   - Custom interval (seconds, `0` = auto from mode; Eco auto = `600` seconds / 10 minutes)
+   - Min distance update (`km` in UI; example `5` = 5 km)
    - Low-battery threshold and fallback interval
-   - `Force Eco profile on RUN`
+   - `Force Eco mode on RUN` (when ON, selected mode is ignored and tracking always uses Eco)
 6. Tap `RUN Beacon`.
 7. App will move to background automatically (no active UI on screen) and continue tracking via foreground notification.
+
+Settings labels are intentionally bilingual (`Indonesia / English`) for easier field mapping during setup.
 
 ## 3) Family Viewer
 
@@ -81,9 +83,10 @@ Then click `Track`.
 Implemented battery-saving decisions:
 
 - Uses Android foreground service only while ride is active.
-- `Eco` mode default with low-power GPS priority and longer interval.
+- `Eco` mode default with low-power GPS priority and longer interval (`600` seconds / 10 minutes).
 - Batches updates (`setMaxUpdateDelayMillis`) to reduce wakeups.
 - Uses network calls with short timeout and tiny JSON payload.
+- Default minimum distance is `5 km` (stored internally as `5000` meters).
 
 ## Production Recommendations
 
