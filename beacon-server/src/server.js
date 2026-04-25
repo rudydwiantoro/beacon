@@ -6,19 +6,18 @@ const app = express();
 const PORT = Number(process.env.PORT || 8080);
 const API_KEY = process.env.BEACON_API_KEY || "change-me";
 const MAX_HISTORY = 2000;
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
-const TELEGRAM_MIN_INTERVAL_SEC = Math.max(
-  0,
-  Number(process.env.TELEGRAM_MIN_INTERVAL_SEC || 120)
-);
+const telegramConfig = {
+  botToken: process.env.TELEGRAM_BOT_TOKEN || "",
+  chatId: process.env.TELEGRAM_CHAT_ID || "",
+  minIntervalSec: Math.max(0, Number(process.env.TELEGRAM_MIN_INTERVAL_SEC || 120)),
+};
 
 app.use(express.json({ limit: "256kb" }));
 
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-beacon-key");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
   if (req.method === "OPTIONS") {
     res.status(204).end();
     return;
@@ -39,13 +38,13 @@ function withAuth(req, res, next) {
 }
 
 function isTelegramEnabled() {
-  return Boolean(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID);
+  return Boolean(telegramConfig.botToken && telegramConfig.chatId);
 }
 
 function shouldSendTelegramNow(riderId) {
   const now = Date.now();
   const last = telegramLastSentByRider.get(riderId) || 0;
-  if (now - last < TELEGRAM_MIN_INTERVAL_SEC * 1000) {
+  if (now - last < telegramConfig.minIntervalSec * 1000) {
     return false;
   }
   telegramLastSentByRider.set(riderId, now);
@@ -75,13 +74,13 @@ async function sendTelegramBeacon(point) {
     `Time: ${point.timestamp}\n` +
     `Map: ${mapLink}`;
 
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const url = `https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`;
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: telegramConfig.chatId,
         text,
       }),
     });
@@ -94,6 +93,42 @@ async function sendTelegramBeacon(point) {
     console.error(`Telegram send failed: ${error.message}`);
   }
 }
+
+app.get("/api/v1/settings", withAuth, (_req, res) => {
+  res.json({
+    telegramBotToken: telegramConfig.botToken,
+    telegramChatId: telegramConfig.chatId,
+    telegramMinIntervalSec: telegramConfig.minIntervalSec,
+    telegramEnabled: isTelegramEnabled(),
+  });
+});
+
+app.put("/api/v1/settings", withAuth, (req, res) => {
+  const body = req.body || {};
+
+  if (typeof body.telegramBotToken === "string") {
+    telegramConfig.botToken = body.telegramBotToken.trim();
+  }
+  if (typeof body.telegramChatId === "string") {
+    telegramConfig.chatId = body.telegramChatId.trim();
+  }
+  if (body.telegramMinIntervalSec !== undefined) {
+    const parsed = Number(body.telegramMinIntervalSec);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      res.status(400).json({ error: "telegramMinIntervalSec must be a non-negative number." });
+      return;
+    }
+    telegramConfig.minIntervalSec = Math.floor(parsed);
+  }
+
+  telegramLastSentByRider.clear();
+
+  res.json({
+    ok: true,
+    telegramEnabled: isTelegramEnabled(),
+    telegramMinIntervalSec: telegramConfig.minIntervalSec,
+  });
+});
 
 app.post("/api/v1/beacon", withAuth, (req, res) => {
   const {
@@ -154,13 +189,13 @@ app.post("/api/v1/telegram/test", withAuth, async (_req, res) => {
     return;
   }
 
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const url = `https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`;
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: telegramConfig.chatId,
         text: "Beacon server test message: Telegram integration is active.",
       }),
     });
@@ -212,7 +247,7 @@ app.listen(PORT, () => {
   console.log("Set BEACON_API_KEY for production.");
   if (isTelegramEnabled()) {
     console.log(
-      `Telegram enabled for chat ${TELEGRAM_CHAT_ID} (min interval ${TELEGRAM_MIN_INTERVAL_SEC}s).`
+      `Telegram enabled for chat ${telegramConfig.chatId} (min interval ${telegramConfig.minIntervalSec}s).`
     );
   } else {
     console.log("Telegram disabled. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable.");

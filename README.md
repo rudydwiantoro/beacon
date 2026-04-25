@@ -29,10 +29,12 @@ If you want every beacon update sent to Telegram:
 
 1. Create Telegram bot using `@BotFather` and get bot token.
 2. Get target chat id (user/group/channel).
-3. Set:
-   - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
-4. Restart server.
+3. Open web viewer (`/`) and fill:
+   - `API Key` (`BEACON_API_KEY`)
+   - `Telegram Bot Token`
+   - `Telegram Chat ID`
+   - `Min interval sec`
+4. Click `Save`, then click `Test`.
 
 To test Telegram configuration:
 
@@ -44,6 +46,7 @@ Notes:
 
 - Telegram relay is optional and disabled by default.
 - Messages are throttled per rider (default every 120 seconds) to avoid spam.
+- You can still set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` via environment as initial defaults.
 
 ## 2) Android App Setup
 

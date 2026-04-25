@@ -16,6 +16,7 @@
       --card: #fffdf8;
       --ink: #182026;
       --accent: #2a7f62;
+      --muted: #f1ecde;
       --warn: #b14f3b;
     }
     * { box-sizing: border-box; }
@@ -37,10 +38,26 @@
       padding: 12px;
       box-shadow: 0 10px 30px rgba(20, 20, 20, 0.08);
     }
+    .title {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+    .subtitle {
+      margin: 0 0 12px;
+      font-size: 13px;
+      opacity: 0.85;
+    }
     .grid {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr auto;
       gap: 10px;
+      margin-bottom: 10px;
+    }
+    .grid-telegram {
+      display: grid;
+      grid-template-columns: 1fr 1fr 180px auto auto;
+      gap: 10px;
+      margin-top: 8px;
       margin-bottom: 10px;
     }
     input, button {
@@ -56,6 +73,25 @@
       font-weight: 600;
       cursor: pointer;
     }
+    button.secondary {
+      background: #52646d;
+    }
+    .panel {
+      background: var(--muted);
+      border: 1px solid #ddd2b9;
+      border-radius: 12px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .panel h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+    .panel p {
+      margin: 6px 0 0;
+      font-size: 12px;
+      opacity: 0.85;
+    }
     #map {
       height: 560px;
       border-radius: 12px;
@@ -68,9 +104,11 @@
       gap: 16px;
       flex-wrap: wrap;
     }
+    .ok { color: #1f7f45; }
     .error { color: var(--warn); }
-    @media (max-width: 800px) {
-      .grid {
+    @media (max-width: 920px) {
+      .grid,
+      .grid-telegram {
         grid-template-columns: 1fr;
       }
       #map {
@@ -82,12 +120,29 @@
 <body>
   <div class="wrap">
     <div class="card">
+      <h1 class="title">Beacon Family Viewer</h1>
+      <p class="subtitle">Tracking + Telegram settings in one UI.</p>
+
       <div class="grid">
         <input id="server" placeholder="Server URL" />
         <input id="rider" placeholder="Rider ID" />
-        <input id="key" placeholder="API Key" type="password" />
+        <input id="key" placeholder="API Key (BEACON_API_KEY)" type="password" />
         <button id="load">Track</button>
       </div>
+
+      <div class="panel">
+        <h3>Telegram Relay Settings</h3>
+        <p>Set once from UI, no source-code edit needed. Protected by API key.</p>
+        <div class="grid-telegram">
+          <input id="tgToken" placeholder="Telegram Bot Token" type="password" />
+          <input id="tgChatId" placeholder="Telegram Chat ID" />
+          <input id="tgMinInterval" placeholder="Min interval sec" type="number" min="0" />
+          <button id="saveTelegram">Save</button>
+          <button id="testTelegram" class="secondary">Test</button>
+        </div>
+        <div id="telegramStatus"></div>
+      </div>
+
       <div id="map"></div>
       <div class="meta">
         <div id="status">Status: waiting</div>
@@ -104,6 +159,11 @@
     const serverInput = document.getElementById("server");
     const riderInput = document.getElementById("rider");
     const keyInput = document.getElementById("key");
+    const tgTokenInput = document.getElementById("tgToken");
+    const tgChatIdInput = document.getElementById("tgChatId");
+    const tgMinIntervalInput = document.getElementById("tgMinInterval");
+    const telegramStatusEl = document.getElementById("telegramStatus");
+
     const statusEl = document.getElementById("status");
     const batteryEl = document.getElementById("battery");
     const modeEl = document.getElementById("mode");
@@ -125,8 +185,105 @@
 
     let timer = null;
 
+    function baseUrl() {
+      return serverInput.value.replace(/\/$/, "");
+    }
+
+    function apiHeaders() {
+      return {
+        "Content-Type": "application/json",
+        "x-beacon-key": keyInput.value.trim(),
+      };
+    }
+
+    async function loadServerSettings() {
+      const key = keyInput.value.trim();
+      if (!key) return;
+
+      try {
+        const res = await fetch(`${baseUrl()}/api/v1/settings`, {
+          headers: { "x-beacon-key": key },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        tgTokenInput.value = data.telegramBotToken || "";
+        tgChatIdInput.value = data.telegramChatId || "";
+        tgMinIntervalInput.value = String(data.telegramMinIntervalSec ?? 120);
+
+        telegramStatusEl.className = "ok";
+        telegramStatusEl.textContent = data.telegramEnabled
+          ? "Telegram relay: enabled"
+          : "Telegram relay: disabled";
+      } catch (err) {
+        telegramStatusEl.className = "error";
+        telegramStatusEl.textContent = `Load Telegram settings failed: ${err.message}`;
+      }
+    }
+
+    async function saveServerSettings() {
+      const key = keyInput.value.trim();
+      if (!key) {
+        telegramStatusEl.className = "error";
+        telegramStatusEl.textContent = "API key required.";
+        return;
+      }
+
+      try {
+        const payload = {
+          telegramBotToken: tgTokenInput.value.trim(),
+          telegramChatId: tgChatIdInput.value.trim(),
+          telegramMinIntervalSec: Number(tgMinIntervalInput.value || "120"),
+        };
+
+        const res = await fetch(`${baseUrl()}/api/v1/settings`, {
+          method: "PUT",
+          headers: apiHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+
+        telegramStatusEl.className = "ok";
+        telegramStatusEl.textContent = body.telegramEnabled
+          ? "Telegram settings saved. Relay enabled."
+          : "Telegram settings saved. Relay still disabled.";
+      } catch (err) {
+        telegramStatusEl.className = "error";
+        telegramStatusEl.textContent = `Save failed: ${err.message}`;
+      }
+    }
+
+    async function testTelegram() {
+      const key = keyInput.value.trim();
+      if (!key) {
+        telegramStatusEl.className = "error";
+        telegramStatusEl.textContent = "API key required.";
+        return;
+      }
+
+      try {
+        const res = await fetch(`${baseUrl()}/api/v1/telegram/test`, {
+          method: "POST",
+          headers: { "x-beacon-key": key },
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+
+        telegramStatusEl.className = "ok";
+        telegramStatusEl.textContent = "Telegram test sent successfully.";
+      } catch (err) {
+        telegramStatusEl.className = "error";
+        telegramStatusEl.textContent = `Telegram test failed: ${err.message}`;
+      }
+    }
+
     async function fetchTrack() {
-      const base = serverInput.value.replace(/\/$/, "");
+      const base = baseUrl();
       const riderId = riderInput.value.trim();
       const key = keyInput.value.trim();
 
@@ -170,7 +327,7 @@
       }
     }
 
-    document.getElementById("load").addEventListener("click", () => {
+    document.getElementById("load").addEventListener("click", async () => {
       localStorage.setItem("beacon_server", serverInput.value.trim());
       localStorage.setItem("beacon_rider", riderInput.value.trim());
       localStorage.setItem("beacon_key", keyInput.value.trim());
@@ -179,9 +336,17 @@
         clearInterval(timer);
       }
 
+      await loadServerSettings();
       fetchTrack();
       timer = setInterval(fetchTrack, 15000);
     });
+
+    document.getElementById("saveTelegram").addEventListener("click", saveServerSettings);
+    document.getElementById("testTelegram").addEventListener("click", testTelegram);
+
+    if (keyInput.value.trim()) {
+      loadServerSettings();
+    }
   </script>
 </body>
 </html>
