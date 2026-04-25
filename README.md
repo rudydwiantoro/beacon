@@ -12,12 +12,38 @@ cd beacon-server
 npm install
 # Windows PowerShell:
 $env:BEACON_API_KEY="replace-with-your-secret"
+# Optional Telegram bot relay:
+# $env:TELEGRAM_BOT_TOKEN="123456:ABCDEF..."
+# $env:TELEGRAM_CHAT_ID="-1001234567890"   # group/channel/user chat id
+# $env:TELEGRAM_MIN_INTERVAL_SEC="120"      # optional throttle per rider
 npm start
 ```
 
 Server runs on `http://localhost:8080` by default.
 
 Viewer page: `http://localhost:8080`
+
+## Telegram Bot Option (Optional)
+
+If you want every beacon update sent to Telegram:
+
+1. Create Telegram bot using `@BotFather` and get bot token.
+2. Get target chat id (user/group/channel).
+3. Set:
+   - `TELEGRAM_BOT_TOKEN`
+   - `TELEGRAM_CHAT_ID`
+4. Restart server.
+
+To test Telegram configuration:
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/telegram/test?key=replace-with-your-secret"
+```
+
+Notes:
+
+- Telegram relay is optional and disabled by default.
+- Messages are throttled per rider (default every 120 seconds) to avoid spam.
 
 ## 2) Android App Setup
 
