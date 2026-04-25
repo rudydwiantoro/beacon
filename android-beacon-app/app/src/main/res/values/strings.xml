@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Beacon Rider</string>
+    <string name="hint_server_url">Server URL (https://example.com)</string>
+    <string name="hint_rider_id">Rider ID (example: andi-bike)</string>
+    <string name="hint_api_key">Family/API key</string>
+    <string name="start_tracking">Start Tracking</string>
+    <string name="stop_tracking">Stop Tracking</string>
+    <string name="permission_required">Location permission required to track.</string>
+    <string name="status_stopped">Status: stopped</string>
+    <string name="status_running">Status: tracking</string>
+</resources>

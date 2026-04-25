@@ -1,0 +1,187 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Beacon Family Viewer</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <style>
+    :root {
+      --bg: #f7f4ec;
+      --card: #fffdf8;
+      --ink: #182026;
+      --accent: #2a7f62;
+      --warn: #b14f3b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+      background: radial-gradient(circle at 20% 20%, #fff, var(--bg));
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 20px auto;
+      padding: 12px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid #e4decf;
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: 0 10px 30px rgba(20, 20, 20, 0.08);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    input, button {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: var(--accent);
+      border: 0;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #map {
+      height: 560px;
+      border-radius: 12px;
+      border: 1px solid #ddd;
+    }
+    .meta {
+      margin-top: 10px;
+      font-size: 14px;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .error { color: var(--warn); }
+    @media (max-width: 800px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      #map {
+        height: 420px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="grid">
+        <input id="server" placeholder="Server URL" />
+        <input id="rider" placeholder="Rider ID" />
+        <input id="key" placeholder="API Key" type="password" />
+        <button id="load">Track</button>
+      </div>
+      <div id="map"></div>
+      <div class="meta">
+        <div id="status">Status: waiting</div>
+        <div id="battery">Battery: -</div>
+        <div id="mode">Mode: -</div>
+        <div id="time">Last update: -</div>
+      </div>
+      <div id="error" class="error"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    const serverInput = document.getElementById("server");
+    const riderInput = document.getElementById("rider");
+    const keyInput = document.getElementById("key");
+    const statusEl = document.getElementById("status");
+    const batteryEl = document.getElementById("battery");
+    const modeEl = document.getElementById("mode");
+    const timeEl = document.getElementById("time");
+    const errorEl = document.getElementById("error");
+
+    serverInput.value = localStorage.getItem("beacon_server") || window.location.origin;
+    riderInput.value = localStorage.getItem("beacon_rider") || "";
+    keyInput.value = localStorage.getItem("beacon_key") || "";
+
+    const map = L.map("map").setView([-6.2, 106.8], 13);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    const marker = L.marker([-6.2, 106.8]).addTo(map);
+    const trackLine = L.polyline([], { color: "#2a7f62", weight: 4 }).addTo(map);
+
+    let timer = null;
+
+    async function fetchTrack() {
+      const base = serverInput.value.replace(/\/$/, "");
+      const riderId = riderInput.value.trim();
+      const key = keyInput.value.trim();
+
+      if (!base || !riderId || !key) {
+        return;
+      }
+
+      const latestUrl = `${base}/api/v1/rider/${encodeURIComponent(riderId)}/latest?key=${encodeURIComponent(key)}`;
+      const historyUrl = `${base}/api/v1/rider/${encodeURIComponent(riderId)}/history?limit=200&key=${encodeURIComponent(key)}`;
+
+      try {
+        errorEl.textContent = "";
+
+        const [latestRes, historyRes] = await Promise.all([
+          fetch(latestUrl),
+          fetch(historyUrl),
+        ]);
+
+        if (!latestRes.ok || !historyRes.ok) {
+          throw new Error(`HTTP ${latestRes.status}/${historyRes.status}`);
+        }
+
+        const latest = await latestRes.json();
+        const history = await historyRes.json();
+
+        const latLng = [latest.lat, latest.lon];
+        marker.setLatLng(latLng);
+        marker.bindPopup(`Rider: ${latest.riderId}`).openPopup();
+
+        trackLine.setLatLngs(history.map((p) => [p.lat, p.lon]));
+
+        map.setView(latLng, Math.max(map.getZoom(), 15));
+
+        statusEl.textContent = "Status: online";
+        batteryEl.textContent = `Battery: ${latest.battery ?? "-"}%`;
+        modeEl.textContent = `Mode: ${latest.mode ?? "-"}`;
+        timeEl.textContent = `Last update: ${latest.receivedAt ?? latest.timestamp}`;
+      } catch (err) {
+        statusEl.textContent = "Status: waiting data";
+        errorEl.textContent = `Unable to load: ${err.message}`;
+      }
+    }
+
+    document.getElementById("load").addEventListener("click", () => {
+      localStorage.setItem("beacon_server", serverInput.value.trim());
+      localStorage.setItem("beacon_rider", riderInput.value.trim());
+      localStorage.setItem("beacon_key", keyInput.value.trim());
+
+      if (timer) {
+        clearInterval(timer);
+      }
+
+      fetchTrack();
+      timer = setInterval(fetchTrack, 15000);
+    });
+  </script>
+</body>
+</html>

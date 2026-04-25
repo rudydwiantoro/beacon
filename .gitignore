@@ -1,0 +1,9 @@
+﻿node_modules/
+.DS_Store
+*.log
+
+android-beacon-app/.gradle/
+android-beacon-app/**/build/
+android-beacon-app/local.properties
+
+beacon-server/node_modules/
