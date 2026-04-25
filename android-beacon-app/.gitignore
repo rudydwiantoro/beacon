@@ -1,0 +1,20 @@
+# Local machine properties — contains SDK path and secret keys, never commit this
+local.properties
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+*.ipr
+*.iws
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystore files
+*.jks
+*.keystore
