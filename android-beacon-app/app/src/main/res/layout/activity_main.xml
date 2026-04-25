@@ -28,18 +28,19 @@
         android:hint="@string/hint_api_key"
         android:inputType="textPassword" />
 
-    <Spinner
-        android:id="@+id/modeSpinner"
+    <Button
+        android:id="@+id/openSettingsBtn"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp" />
+        android:layout_marginTop="14dp"
+        android:text="@string/open_settings" />
 
     <Button
         android:id="@+id/startBtn"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="@string/start_tracking" />
+        android:layout_marginTop="8dp"
+        android:text="@string/run_tracking" />
 
     <Button
         android:id="@+id/stopBtn"
@@ -54,5 +55,11 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:text="@string/status_stopped" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/run_hint" />
 
 </LinearLayout>

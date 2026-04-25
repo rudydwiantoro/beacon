@@ -5,8 +5,20 @@
     <string name="hint_rider_id">Rider ID (example: andi-bike)</string>
     <string name="hint_api_key">Family/API key</string>
     <string name="start_tracking">Start Tracking</string>
+    <string name="run_tracking">RUN Beacon</string>
     <string name="stop_tracking">Stop Tracking</string>
+    <string name="open_settings">Settings</string>
     <string name="permission_required">Location permission required to track.</string>
     <string name="status_stopped">Status: stopped</string>
     <string name="status_running">Status: tracking</string>
+    <string name="run_hint">Saat RUN aktif, app masuk background untuk mode hemat baterai. Kontrol lewat notifikasi atau buka app lagi.</string>
+    <string name="settings_title">Tracking Settings</string>
+    <string name="hint_custom_interval">Custom interval (seconds, 0 = auto by mode)</string>
+    <string name="hint_min_distance">Min distance update (meters)</string>
+    <string name="hint_low_battery_threshold">Low battery threshold (%)</string>
+    <string name="hint_low_battery_interval">Low battery interval (seconds)</string>
+    <string name="force_eco_on_run">Force Eco profile on RUN</string>
+    <string name="save_settings">Save Settings</string>
+    <string name="cancel_settings">Cancel</string>
+    <string name="settings_saved">Settings saved</string>
 </resources>

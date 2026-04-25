@@ -5,10 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,8 +18,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var serverUrlInput: EditText
     private lateinit var riderIdInput: EditText
     private lateinit var apiKeyInput: EditText
-    private lateinit var modeSpinner: Spinner
     private lateinit var statusText: TextView
+
+    private var shouldEnterBackgroundAfterStart = false
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
@@ -40,31 +39,20 @@ class MainActivity : AppCompatActivity() {
         serverUrlInput = findViewById(R.id.serverUrlInput)
         riderIdInput = findViewById(R.id.riderIdInput)
         apiKeyInput = findViewById(R.id.apiKeyInput)
-        modeSpinner = findViewById(R.id.modeSpinner)
         statusText = findViewById(R.id.statusText)
-
-        val modeAdapter = ArrayAdapter.createFromResource(
-            this,
-            R.array.tracking_modes,
-            android.R.layout.simple_spinner_item
-        )
-        modeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        modeSpinner.adapter = modeAdapter
 
         val config = ConfigStore.read(this)
         serverUrlInput.setText(config.serverUrl)
         riderIdInput.setText(config.riderId)
         apiKeyInput.setText(config.apiKey)
-        modeSpinner.setSelection(
-            when (config.mode) {
-                "balanced" -> 1
-                "live" -> 2
-                else -> 0
-            }
-        )
+
+        findViewById<Button>(R.id.openSettingsBtn).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
 
         findViewById<Button>(R.id.startBtn).setOnClickListener {
-            persistInputs()
+            persistBasicInputs()
+            shouldEnterBackgroundAfterStart = true
             if (hasLocationPermissions()) {
                 startTrackingService()
             } else {
@@ -78,6 +66,7 @@ class MainActivity : AppCompatActivity() {
             }
             startService(stopIntent)
             statusText.text = getString(R.string.status_stopped)
+            shouldEnterBackgroundAfterStart = false
         }
 
         refreshStatus()
@@ -88,19 +77,12 @@ class MainActivity : AppCompatActivity() {
         refreshStatus()
     }
 
-    private fun persistInputs() {
-        val mode = when (modeSpinner.selectedItemPosition) {
-            1 -> "balanced"
-            2 -> "live"
-            else -> "eco"
-        }
-
-        ConfigStore.write(
+    private fun persistBasicInputs() {
+        ConfigStore.updateBasic(
             this,
             serverUrl = serverUrlInput.text.toString().trim().trimEnd('/'),
             riderId = riderIdInput.text.toString().trim(),
-            apiKey = apiKeyInput.text.toString().trim(),
-            mode = mode
+            apiKey = apiKeyInput.text.toString().trim()
         )
     }
 
@@ -153,8 +135,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startTrackingService() {
+        val config = ConfigStore.read(this)
         val startIntent = Intent(this, TrackerService::class.java).apply {
             action = TrackerService.ACTION_START
+            putExtra(TrackerService.EXTRA_FORCE_ECO, config.forceEcoOnRun)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -164,5 +148,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusText.text = getString(R.string.status_running)
+
+        if (shouldEnterBackgroundAfterStart) {
+            moveTaskToBack(true)
+            finish()
+        }
     }
 }

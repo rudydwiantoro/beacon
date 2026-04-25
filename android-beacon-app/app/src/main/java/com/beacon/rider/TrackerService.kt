@@ -26,6 +26,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import kotlin.math.max
 
 class TrackerService : Service() {
 
@@ -59,8 +60,11 @@ class TrackerService : Service() {
                     return START_NOT_STICKY
                 }
 
-                startForeground(NOTIFICATION_ID, buildNotification(config.mode))
-                startTracking(config)
+                val forceEco = intent.getBooleanExtra(EXTRA_FORCE_ECO, false)
+                val requestProfile = resolveProfile(config, forceEco)
+
+                startForeground(NOTIFICATION_ID, buildNotification(requestProfile.profileName))
+                startTracking(config, requestProfile)
                 return START_STICKY
             }
 
@@ -68,13 +72,13 @@ class TrackerService : Service() {
         }
     }
 
-    private fun startTracking(config: BeaconConfig) {
-        val request = buildLocationRequest(config.mode)
+    private fun startTracking(config: BeaconConfig, profile: TrackingProfile) {
+        val request = buildLocationRequest(profile, config.minDistanceMeters)
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
-                pushLocation(config, location)
+                pushLocation(config, location, profile.profileName)
             }
         }
 
@@ -100,7 +104,7 @@ class TrackerService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
-    private fun pushLocation(config: BeaconConfig, location: Location) {
+    private fun pushLocation(config: BeaconConfig, location: Location, profileName: String) {
         val batteryPct = currentBatteryPercent()
         val payload = JSONObject()
             .put("riderId", config.riderId)
@@ -110,7 +114,7 @@ class TrackerService : Service() {
             .put("speed", location.speed)
             .put("bearing", location.bearing)
             .put("battery", batteryPct)
-            .put("mode", config.mode)
+            .put("mode", profileName)
             .put("timestamp", Instant.ofEpochMilli(location.time).toString())
 
         val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
@@ -128,27 +132,57 @@ class TrackerService : Service() {
         })
     }
 
-    private fun buildLocationRequest(mode: String): LocationRequest {
-        val intervalMs = when (mode) {
+    private fun resolveProfile(config: BeaconConfig, forceEco: Boolean): TrackingProfile {
+        val batteryPct = currentBatteryPercent()
+        val mode = if (forceEco) "eco" else config.mode
+
+        val defaultIntervalMs = when (mode) {
             "live" -> 20_000L
             "balanced" -> 60_000L
             else -> 180_000L
         }
 
-        val priority = when (mode) {
-            "live" -> Priority.PRIORITY_HIGH_ACCURACY
-            "balanced" -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
-            else -> Priority.PRIORITY_LOW_POWER
+        val customIntervalMs = config.customIntervalSec
+            .takeIf { it > 0 }
+            ?.times(1000L)
+            ?: defaultIntervalMs
+
+        val lowBatteryIntervalMs = max(config.lowBatteryIntervalSec, 30) * 1000L
+        val isLowBattery = batteryPct in 1..config.lowBatteryThreshold
+        val finalIntervalMs = if (isLowBattery) {
+            max(customIntervalMs, lowBatteryIntervalMs)
+        } else {
+            customIntervalMs
         }
 
-        return LocationRequest.Builder(priority, intervalMs)
-            .setMinUpdateIntervalMillis(intervalMs / 2)
-            .setMaxUpdateDelayMillis(intervalMs * 2)
+        val priority = if (forceEco) {
+            Priority.PRIORITY_LOW_POWER
+        } else {
+            when (mode) {
+                "live" -> Priority.PRIORITY_HIGH_ACCURACY
+                "balanced" -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
+                else -> Priority.PRIORITY_LOW_POWER
+            }
+        }
+
+        val profileName = if (forceEco) "run-eco" else mode
+        return TrackingProfile(
+            profileName = profileName,
+            intervalMs = finalIntervalMs,
+            priority = priority
+        )
+    }
+
+    private fun buildLocationRequest(profile: TrackingProfile, minDistanceMeters: Float): LocationRequest {
+        return LocationRequest.Builder(profile.priority, profile.intervalMs)
+            .setMinUpdateIntervalMillis(max(5_000L, profile.intervalMs / 2))
+            .setMaxUpdateDelayMillis(max(profile.intervalMs * 2, 30_000L))
+            .setMinUpdateDistanceMeters(minDistanceMeters.coerceAtLeast(0f))
             .setWaitForAccurateLocation(false)
             .build()
     }
 
-    private fun buildNotification(mode: String): Notification {
+    private fun buildNotification(profileName: String): Notification {
         createChannel()
 
         val openIntent = PendingIntent.getActivity(
@@ -160,7 +194,7 @@ class TrackerService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Beacon Rider")
-            .setContentText("Tracking mode: $mode")
+            .setContentText("Tracking profile: $profileName")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(openIntent)
             .setOngoing(true)
@@ -206,9 +240,16 @@ class TrackerService : Service() {
     companion object {
         const val ACTION_START = "com.beacon.rider.action.START"
         const val ACTION_STOP = "com.beacon.rider.action.STOP"
+        const val EXTRA_FORCE_ECO = "com.beacon.rider.extra.FORCE_ECO"
         const val PREF_RUNNING = "tracking_running"
 
         private const val CHANNEL_ID = "beacon_tracking"
         private const val NOTIFICATION_ID = 1001
     }
 }
+
+data class TrackingProfile(
+    val profileName: String,
+    val intervalMs: Long,
+    val priority: Int
+)

@@ -54,11 +54,14 @@ Notes:
    - `Server URL`: your server public URL (example `https://mybeacon.example.com`)
    - `Rider ID`: unique id for rider (example `budi-bike`)
    - `Family/API key`: same as `BEACON_API_KEY`
-5. Pick mode:
-   - `Eco`: every ~3 min, low power priority (best battery)
-   - `Balanced`: every ~1 min
-   - `Live`: every ~20 sec, high accuracy (higher battery)
-6. Tap `Start Tracking`.
+5. Tap `Settings` to customize:
+   - Base mode (`Eco`, `Balanced`, `Live`)
+   - Custom interval (seconds, `0` = auto from mode)
+   - Min distance update (meters)
+   - Low-battery threshold and fallback interval
+   - `Force Eco profile on RUN`
+6. Tap `RUN Beacon`.
+7. App will move to background automatically (no active UI on screen) and continue tracking via foreground notification.
 
 ## 3) Family Viewer
 
