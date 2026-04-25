@@ -1,5 +1,6 @@
 ﻿package com.beacon.rider
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -12,6 +13,8 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
+import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -24,6 +27,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.lang.Exception
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
@@ -37,17 +41,25 @@ class TrackerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "onCreate")
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
         http = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .writeTimeout(10, TimeUnit.SECONDS)
             .build()
+
+        createChannel()
+        startForeground(NOTIFICATION_ID, buildNotification("initialising"))
+        Log.d(TAG, "startForeground called")
     }
 
+    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand action=${intent?.action}")
         when (intent?.action) {
             ACTION_STOP -> {
+                Log.d(TAG, "ACTION_STOP received")
                 stopTracking()
                 stopSelf()
                 return START_NOT_STICKY
@@ -55,25 +67,32 @@ class TrackerService : Service() {
 
             ACTION_START -> {
                 val config = ConfigStore.read(this)
-                if (config.serverUrl.isBlank() || config.riderId.isBlank() || config.apiKey.isBlank()) {
+                Log.d(TAG, "ACTION_START — riderId='${config.riderId}' serverUrl='${config.serverUrl}'")
+                if (config.riderId.isBlank()) {
+                    Log.w(TAG, "riderId is blank — stopping service")
                     stopSelf()
                     return START_NOT_STICKY
                 }
 
                 val forceEco = intent.getBooleanExtra(EXTRA_FORCE_ECO, false)
                 val requestProfile = resolveProfile(config, forceEco)
+                Log.d(TAG, "Resolved profile: ${requestProfile.profileName}, interval=${requestProfile.intervalMs}ms")
 
                 startForeground(NOTIFICATION_ID, buildNotification(requestProfile.profileName))
                 startTracking(config, requestProfile)
                 return START_STICKY
             }
 
-            else -> return START_STICKY
+            else -> {
+                Log.w(TAG, "Unknown or null action — doing nothing")
+                return START_STICKY
+            }
         }
     }
 
+    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
     private fun startTracking(config: BeaconConfig, profile: TrackingProfile) {
-        val request = buildLocationRequest(profile, config.minDistanceMeters)
+        val request = buildLocationRequest(profile, 0f)
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
@@ -89,13 +108,16 @@ class TrackerService : Service() {
                 Looper.getMainLooper()
             )
             markRunning(true)
-        } catch (_: SecurityException) {
+            Log.d(TAG, "Started tracking with profile: ${profile.profileName}, interval: ${profile.intervalMs}ms, priority: ${profile.priority}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start location updates", e)
             stopTracking()
             stopSelf()
         }
     }
 
     private fun stopTracking() {
+        Log.d(TAG, "stopTracking called")
         locationCallback?.let {
             fusedClient.removeLocationUpdates(it)
         }
@@ -106,27 +128,43 @@ class TrackerService : Service() {
 
     private fun pushLocation(config: BeaconConfig, location: Location, profileName: String) {
         val batteryPct = currentBatteryPercent()
+        val batteryStr = if (batteryPct >= 0) "$batteryPct%" else "unknown"
+        val mapsUrl = "https://maps.google.com/?q=${location.latitude},${location.longitude}"
+        val speedKmh = (location.speed * 3.6f).toInt()
+        val timestamp = Instant.ofEpochMilli(location.time).toString()
+
+        val text = """
+            🚴 *Beacon Rider Update*
+            👤 Rider: `${config.riderId}`
+            📍 [Open in Maps]($mapsUrl)
+            🎯 Accuracy: ${location.accuracy.toInt()} m
+            💨 Speed: $speedKmh km/h
+            🧭 Bearing: ${location.bearing.toInt()}°
+            🔋 Battery: $batteryStr
+            ⚙️ Mode: `$profileName`
+            🕐 `$timestamp`
+        """.trimIndent()
+
         val payload = JSONObject()
-            .put("riderId", config.riderId)
-            .put("lat", location.latitude)
-            .put("lon", location.longitude)
-            .put("accuracy", location.accuracy)
-            .put("speed", location.speed)
-            .put("bearing", location.bearing)
-            .put("battery", batteryPct)
-            .put("mode", profileName)
-            .put("timestamp", Instant.ofEpochMilli(location.time).toString())
+            .put("chat_id", BuildConfig.TELEGRAM_CHANNEL_ID)
+            .put("text", text)
+            .put("parse_mode", "Markdown")
+            .put("disable_web_page_preview", false)
+
+        Log.d("TrackerService", "Pushing location: $text")
 
         val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder()
-            .url(config.serverUrl + "/api/v1/beacon")
-            .header("x-beacon-key", config.apiKey)
+            .url("https://api.telegram.org/bot${BuildConfig.TELEGRAM_BOT_TOKEN}/sendMessage")
             .post(body)
             .build()
 
         http.newCall(request).enqueue(object : okhttp3.Callback {
-            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) = Unit
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                Log.e(TAG, "Telegram push failed", e)
+            }
             override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                Log.d(TAG, "Telegram push response: ${response.code} — ${response.message}")
                 response.close()
             }
         })
@@ -157,6 +195,7 @@ class TrackerService : Service() {
 
         val priority = if (forceEco) {
             Priority.PRIORITY_LOW_POWER
+//            Priority.PRIORITY_BALANCED_POWER_ACCURACY
         } else {
             when (mode) {
                 "live" -> Priority.PRIORITY_HIGH_ACCURACY
@@ -176,14 +215,13 @@ class TrackerService : Service() {
     private fun buildLocationRequest(profile: TrackingProfile, minDistanceMeters: Float): LocationRequest {
         return LocationRequest.Builder(profile.priority, profile.intervalMs)
             .setMinUpdateIntervalMillis(max(5_000L, profile.intervalMs / 2))
-            .setMaxUpdateDelayMillis(max(profile.intervalMs * 2, 30_000L))
+            .setMaxUpdateDelayMillis(profile.intervalMs)  // don't batch beyond the interval
             .setMinUpdateDistanceMeters(minDistanceMeters.coerceAtLeast(0f))
             .setWaitForAccurateLocation(false)
             .build()
     }
 
     private fun buildNotification(profileName: String): Notification {
-        createChannel()
 
         val openIntent = PendingIntent.getActivity(
             this,
@@ -231,6 +269,7 @@ class TrackerService : Service() {
     }
 
     override fun onDestroy() {
+        Log.d(TAG, "onDestroy")
         stopTracking()
         super.onDestroy()
     }
@@ -245,6 +284,7 @@ class TrackerService : Service() {
 
         private const val CHANNEL_ID = "beacon_tracking"
         private const val NOTIFICATION_ID = 1001
+        private const val TAG = "TrackerService"
     }
 }
 

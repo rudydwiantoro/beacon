@@ -1,6 +1,13 @@
-﻿plugins {
+﻿import java.util.Properties
+
+plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+val localProps = Properties().also { props ->
+    val f = rootProject.file("local.properties")
+    if (f.exists()) props.load(f.inputStream())
 }
 
 android {
@@ -13,6 +20,21 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField(
+            "String",
+            "TELEGRAM_BOT_TOKEN",
+            "\"${localProps.getProperty("TELEGRAM_BOT_TOKEN", "")}\""
+        )
+        buildConfigField(
+            "String",
+            "TELEGRAM_CHANNEL_ID",
+            "\"${localProps.getProperty("TELEGRAM_CHANNEL_ID", "")}\""
+        )
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
