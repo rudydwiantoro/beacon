@@ -20,6 +20,8 @@ class SettingsActivity : AppCompatActivity() {
 
     companion object {
         private const val KM_TO_METERS = 1000f
+        private const val DEFAULT_MIN_DISTANCE_KM = 5f
+        private const val LEGACY_MAX_DISTANCE_METERS = 999f
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,7 +55,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun bindConfig() {
-        val config = ConfigStore.read(this)
+        val config = normalizeLegacyMinDistance(ConfigStore.read(this))
 
         modeSpinner.setSelection(
             when (config.mode) {
@@ -76,6 +78,17 @@ class SettingsActivity : AppCompatActivity() {
         forceEcoSwitch.isChecked = config.forceEcoOnRun
     }
 
+    private fun normalizeLegacyMinDistance(config: BeaconConfig): BeaconConfig {
+        if (config.minDistanceMeters in 0.001f..LEGACY_MAX_DISTANCE_METERS) {
+            val normalizedConfig = config.copy(
+                minDistanceMeters = DEFAULT_MIN_DISTANCE_KM * KM_TO_METERS
+            )
+            ConfigStore.write(this, normalizedConfig)
+            return normalizedConfig
+        }
+        return config
+    }
+
     private fun saveSettings() {
         val mode = when (modeSpinner.selectedItemPosition) {
             1 -> "balanced"
@@ -84,7 +97,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         val customIntervalSec = intervalInput.text.toString().trim().toIntOrNull() ?: 0
-        val minDistanceKm = minDistanceInput.text.toString().trim().toFloatOrNull() ?: 5f
+        val minDistanceKm = minDistanceInput.text.toString().trim().toFloatOrNull() ?: DEFAULT_MIN_DISTANCE_KM
         val minDistanceMeters = minDistanceKm.coerceAtLeast(0f) * KM_TO_METERS
         val lowBatteryThreshold = lowBatteryThresholdInput.text.toString().trim().toIntOrNull() ?: 20
         val lowBatteryIntervalSec = lowBatteryIntervalInput.text.toString().trim().toIntOrNull() ?: 300
