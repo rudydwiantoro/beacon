@@ -18,6 +18,10 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var lowBatteryIntervalInput: EditText
     private lateinit var forceEcoSwitch: Switch
 
+    companion object {
+        private const val KM_TO_METERS = 1000f
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -59,7 +63,14 @@ class SettingsActivity : AppCompatActivity() {
             }
         )
         intervalInput.setText(config.customIntervalSec.toString())
-        minDistanceInput.setText(config.minDistanceMeters.toString())
+        val minDistanceKm = config.minDistanceMeters / KM_TO_METERS
+        minDistanceInput.setText(
+            if (minDistanceKm % 1f == 0f) {
+                minDistanceKm.toInt().toString()
+            } else {
+                minDistanceKm.toString()
+            }
+        )
         lowBatteryThresholdInput.setText(config.lowBatteryThreshold.toString())
         lowBatteryIntervalInput.setText(config.lowBatteryIntervalSec.toString())
         forceEcoSwitch.isChecked = config.forceEcoOnRun
@@ -73,7 +84,8 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         val customIntervalSec = intervalInput.text.toString().trim().toIntOrNull() ?: 0
-        val minDistanceMeters = minDistanceInput.text.toString().trim().toFloatOrNull() ?: 25f
+        val minDistanceKm = minDistanceInput.text.toString().trim().toFloatOrNull() ?: 5f
+        val minDistanceMeters = minDistanceKm.coerceAtLeast(0f) * KM_TO_METERS
         val lowBatteryThreshold = lowBatteryThresholdInput.text.toString().trim().toIntOrNull() ?: 20
         val lowBatteryIntervalSec = lowBatteryIntervalInput.text.toString().trim().toIntOrNull() ?: 300
 
@@ -81,7 +93,7 @@ class SettingsActivity : AppCompatActivity() {
             this,
             mode = mode,
             customIntervalSec = customIntervalSec.coerceAtLeast(0),
-            minDistanceMeters = minDistanceMeters.coerceAtLeast(0f),
+            minDistanceMeters = minDistanceMeters,
             lowBatteryThreshold = lowBatteryThreshold.coerceIn(1, 100),
             lowBatteryIntervalSec = lowBatteryIntervalSec.coerceAtLeast(30),
             forceEcoOnRun = forceEcoSwitch.isChecked

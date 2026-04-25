@@ -21,6 +21,20 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/eco_suggestion_note"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/settings_input_note"
+            android:textSize="12sp" />
+
         <EditText
             android:id="@+id/intervalInput"
             android:layout_width="match_parent"
@@ -59,6 +73,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:text="@string/force_eco_on_run" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/mode_override_note"
+            android:textSize="12sp" />
 
         <Button
             android:id="@+id/saveSettingsBtn"

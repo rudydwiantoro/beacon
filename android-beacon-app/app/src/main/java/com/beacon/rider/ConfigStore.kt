@@ -35,10 +35,10 @@ object ConfigStore {
             apiKey = prefs.getString(KEY_API_KEY, "") ?: "",
             mode = prefs.getString(KEY_MODE, "eco") ?: "eco",
             customIntervalSec = prefs.getInt(KEY_CUSTOM_INTERVAL_SEC, 0),
-            minDistanceMeters = prefs.getFloat(KEY_MIN_DISTANCE_METERS, 25f),
+            minDistanceMeters = prefs.getFloat(KEY_MIN_DISTANCE_METERS, 5000f),
             lowBatteryThreshold = prefs.getInt(KEY_LOW_BATTERY_THRESHOLD, 20),
             lowBatteryIntervalSec = prefs.getInt(KEY_LOW_BATTERY_INTERVAL_SEC, 300),
-            forceEcoOnRun = prefs.getBoolean(KEY_FORCE_ECO_ON_RUN, true)
+            forceEcoOnRun = prefs.getBoolean(KEY_FORCE_ECO_ON_RUN, false)
         )
     }
 

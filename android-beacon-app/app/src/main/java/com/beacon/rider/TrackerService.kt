@@ -139,7 +139,7 @@ class TrackerService : Service() {
         val defaultIntervalMs = when (mode) {
             "live" -> 20_000L
             "balanced" -> 60_000L
-            else -> 180_000L
+            else -> 600_000L
         }
 
         val customIntervalMs = config.customIntervalSec
