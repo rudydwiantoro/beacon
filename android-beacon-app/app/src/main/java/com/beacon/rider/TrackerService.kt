@@ -96,7 +96,7 @@ class TrackerService : Service() {
         locationCallback?.let { fusedClient.removeLocationUpdates(it) }
         locationCallback = null
 
-        val request = buildLocationRequest(profile, 0f)
+        val request = buildLocationRequest(profile, config.minDistanceMeters)
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {

@@ -1,4 +1,8 @@
-﻿package com.beacon.rider
+﻿import android.util.Log
+import com.beacon.rider.ConfigStore
+import com.beacon.rider.R
+import com.beacon.rider.SettingsActivity
+import com.beacon.rider.TrackerService
 
 import android.Manifest
 import android.content.Intent
@@ -135,6 +139,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startTrackingService() {
+        // Guard: if already running, don't send another ACTION_START
+        val prefs = getSharedPreferences(ConfigStore.PREFS, MODE_PRIVATE)
+        if (prefs.getBoolean(TrackerService.PREF_RUNNING, false)) {
+            Log.d("MainActivity", "startTrackingService: already running, skipping")
+            return
+        }
+
         val config = ConfigStore.read(this)
         val startIntent = Intent(this, TrackerService::class.java).apply {
             action = TrackerService.ACTION_START
