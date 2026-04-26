@@ -1,4 +1,6 @@
-﻿import android.util.Log
+﻿package com.beacon.rider
+
+import android.util.Log
 import com.beacon.rider.ConfigStore
 import com.beacon.rider.R
 import com.beacon.rider.SettingsActivity
