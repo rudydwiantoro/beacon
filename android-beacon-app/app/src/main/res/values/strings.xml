@@ -14,10 +14,16 @@
     <string name="run_hint">Saat RUN aktif, app masuk background untuk mode hemat baterai. Kontrol lewat notifikasi atau buka app lagi.</string>
     <string name="settings_title">Pengaturan Tracking / Tracking Settings</string>
     <string name="settings_input_note">Format input / Input format: interval dalam detik (contoh/example 600 = 10 menit), jarak minimum dalam km (contoh/example 5 = 5 km).</string>
+    <string name="label_custom_interval">Interval kirim / Send interval</string>
+    <string name="label_min_distance">Jarak minimum update / Min update distance</string>
+    <string name="label_low_battery_threshold">Ambang baterai rendah / Low battery threshold</string>
+    <string name="label_low_battery_interval">Interval baterai rendah / Low battery interval</string>
     <string name="hint_custom_interval">Interval kirim / Send interval (detik/seconds), 0 = auto mode</string>
     <string name="hint_min_distance">Jarak minimum update / Min update distance (km)</string>
     <string name="hint_low_battery_threshold">Ambang baterai rendah / Low battery threshold (%)</string>
     <string name="hint_low_battery_interval">Interval baterai rendah / Low battery interval (detik/seconds)</string>
+    <string name="interval_value_note">Catatan: nilai 0 artinya pakai auto mode (Eco default = 600 detik / 10 menit).</string>
+    <string name="distance_value_note">Catatan: nilai 0.025 km = 25 meter (nilai lama/legacy), rekomendasi sekarang 5 km.</string>
     <string name="force_eco_on_run">Paksa mode Eco saat RUN / Force Eco mode on RUN</string>
     <string name="mode_override_note">Jika ON, pilihan mode diabaikan dan tracking pakai Eco. / If ON, selected mode is ignored and tracking uses Eco.</string>
     <string name="eco_suggestion_note">Saran Eco / Eco suggestion: auto interval 10 menit (600 detik), min distance 5 km, low battery threshold 20%, low battery interval 300 detik.</string>
