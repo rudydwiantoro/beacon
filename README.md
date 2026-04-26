@@ -63,10 +63,28 @@ Notes:
    - Min distance update (`km` in UI; example `5` = 5 km)
    - Low-battery threshold and fallback interval
    - `Force Eco mode on RUN` (when ON, selected mode is ignored and tracking always uses Eco)
+   - Permanent field labels are shown above each numeric input (not only placeholder/hint), so values stay understandable after input.
 6. Tap `RUN Beacon`.
 7. App will move to background automatically (no active UI on screen) and continue tracking via foreground notification.
 
 Settings labels are intentionally bilingual (`Indonesia / English`) for easier field mapping during setup.
+
+### Parameter Labels (UI)
+
+- `Interval kirim / Send interval`: value in seconds.
+- `Jarak minimum update / Min update distance`: value in kilometers (`km`).
+- `Ambang baterai rendah / Low battery threshold`: value in percent (`%`).
+- `Interval baterai rendah / Low battery interval`: value in seconds.
+
+Value meaning examples:
+
+- `0` for interval means auto mode (Eco default = `600` seconds / 10 minutes).
+- `0.025` for min distance means `0.025 km` = `25 meters` (legacy/old value format seen on earlier config).
+
+### Legacy Value Auto-Normalization
+
+- On opening Settings, old small distance values (`0 < minDistanceMeters <= 999`) are treated as legacy and auto-normalized to `5 km` (`5000` meters).
+- This avoids confusing display like `0.025` and aligns with current default recommendation.
 
 ## 3) Family Viewer
 
