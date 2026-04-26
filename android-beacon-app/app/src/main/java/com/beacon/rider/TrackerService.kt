@@ -92,6 +92,10 @@ class TrackerService : Service() {
 
     @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
     private fun startTracking(config: BeaconConfig, profile: TrackingProfile) {
+        // Remove any existing callback before registering a new one to avoid duplicate pushes
+        locationCallback?.let { fusedClient.removeLocationUpdates(it) }
+        locationCallback = null
+
         val request = buildLocationRequest(profile, 0f)
 
         locationCallback = object : LocationCallback() {
