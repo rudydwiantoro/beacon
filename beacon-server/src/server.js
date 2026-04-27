@@ -11,6 +11,9 @@ const telegramConfig = {
   chatId: process.env.TELEGRAM_CHAT_ID || "",
   minIntervalSec: Math.max(0, Number(process.env.TELEGRAM_MIN_INTERVAL_SEC || 120)),
 };
+const appMode = {
+  relayMode: process.env.BEACON_RELAY_MODE === "cloud" ? "cloud" : "telegram",
+};
 
 app.use(express.json({ limit: "256kb" }));
 
@@ -94,12 +97,33 @@ async function sendTelegramBeacon(point) {
   }
 }
 
+async function sendTelegramText(text) {
+  if (!isTelegramEnabled()) return false;
+  if (typeof fetch !== "function") return false;
+
+  const url = `https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: telegramConfig.chatId,
+        text,
+      }),
+    });
+    return response.ok;
+  } catch (_error) {
+    return false;
+  }
+}
+
 app.get("/api/v1/settings", withAuth, (_req, res) => {
   res.json({
     telegramBotToken: telegramConfig.botToken,
     telegramChatId: telegramConfig.chatId,
     telegramMinIntervalSec: telegramConfig.minIntervalSec,
     telegramEnabled: isTelegramEnabled(),
+    relayMode: appMode.relayMode,
   });
 });
 
@@ -127,6 +151,43 @@ app.put("/api/v1/settings", withAuth, (req, res) => {
     ok: true,
     telegramEnabled: isTelegramEnabled(),
     telegramMinIntervalSec: telegramConfig.minIntervalSec,
+    relayMode: appMode.relayMode,
+  });
+});
+
+app.get("/api/v1/mode", withAuth, (_req, res) => {
+  res.json({
+    relayMode: appMode.relayMode,
+  });
+});
+
+app.put("/api/v1/mode", withAuth, async (req, res) => {
+  const mode = String(req.body?.relayMode || "").toLowerCase();
+  if (!["telegram", "cloud"].includes(mode)) {
+    res.status(400).json({ error: "relayMode must be telegram or cloud." });
+    return;
+  }
+
+  const prevMode = appMode.relayMode;
+  appMode.relayMode = mode;
+
+  if (prevMode !== mode) {
+    const now = new Date().toISOString();
+    const text =
+      `Beacon mode switched\n` +
+      `From: ${prevMode}\n` +
+      `To: ${mode}\n` +
+      `Time: ${now}\n` +
+      (mode === "cloud"
+        ? "Viewer instruction: mode cloud aktif, cek posisi di Cloud/Supabase."
+        : "Viewer instruction: mode telegram aktif, cek posisi di local beacon viewer.");
+    await sendTelegramText(text);
+  }
+
+  res.json({
+    ok: true,
+    relayMode: appMode.relayMode,
+    switched: prevMode !== mode,
   });
 });
 
@@ -172,7 +233,9 @@ app.post("/api/v1/beacon", withAuth, (req, res) => {
     }
   }
 
-  sendTelegramBeacon(point);
+  if (appMode.relayMode === "telegram") {
+    sendTelegramBeacon(point);
+  }
   res.status(202).json({ ok: true });
 });
 

@@ -18,6 +18,21 @@
         <activity
             android:name=".SettingsActivity"
             android:exported="false" />
+        <activity
+            android:name=".RelayModeSettingsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".TelegramSettingsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".CloudDbSettingsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".TrackingProfileSettingsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".RelayTestActivity"
+            android:exported="false" />
 
         <activity
             android:name=".MainActivity"

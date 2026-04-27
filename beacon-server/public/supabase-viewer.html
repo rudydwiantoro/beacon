@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Beacon Supabase Viewer</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <style>
+    :root {
+      --bg: #f4f1e7;
+      --card: #fffcf4;
+      --ink: #1c2630;
+      --accent: #245f75;
+      --muted: #e8e2d3;
+      --warn: #ad3d33;
+      --ok: #216a44;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 15% 10%, #fff, var(--bg));
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 20px auto;
+      padding: 12px;
+    }
+
+    .card {
+      border: 1px solid #ded5c1;
+      border-radius: 14px;
+      background: var(--card);
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
+      padding: 12px;
+    }
+
+    .title {
+      margin: 0 0 6px;
+      font-size: 22px;
+      letter-spacing: 0.2px;
+    }
+
+    .subtitle {
+      margin: 0 0 12px;
+      opacity: 0.86;
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1.4fr 1fr 1fr 1fr auto;
+      margin-bottom: 10px;
+    }
+
+    .grid-2 {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      margin-bottom: 10px;
+    }
+
+    input, button, select {
+      width: 100%;
+      border: 1px solid #cfc5ad;
+      border-radius: 10px;
+      padding: 10px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #4f646f;
+    }
+
+    .cols {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 10px;
+    }
+
+    .panel {
+      border: 1px solid #d8cdb6;
+      border-radius: 12px;
+      background: var(--muted);
+      padding: 10px;
+    }
+
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    #tripList {
+      max-height: 560px;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .trip-item {
+      border: 1px solid #cabf9f;
+      border-radius: 10px;
+      background: #fff;
+      padding: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .trip-item.active {
+      border-color: var(--accent);
+      outline: 2px solid rgba(36, 95, 117, 0.2);
+    }
+
+    #map {
+      height: 560px;
+      border-radius: 12px;
+      border: 1px solid #d5ccb5;
+    }
+
+    .meta {
+      margin-top: 10px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
+
+    .ok { color: var(--ok); }
+    .error { color: var(--warn); }
+
+    @media (max-width: 960px) {
+      .grid, .grid-2, .cols {
+        grid-template-columns: 1fr;
+      }
+
+      #map, #tripList {
+        max-height: none;
+        height: 420px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1 class="title">Beacon Supabase Viewer</h1>
+      <p class="subtitle">Local UI, data source from Supabase PostgreSQL.</p>
+
+      <div class="grid">
+        <input id="supabaseUrl" placeholder="Supabase URL (https://xxxx.supabase.co)" />
+        <input id="anonKey" placeholder="Supabase anon key" type="password" />
+        <input id="beaconCode" placeholder="Beacon code" />
+        <input id="pointLimit" placeholder="Max points" type="number" min="100" step="100" value="3000" />
+        <button id="connectBtn">Load Trip</button>
+      </div>
+
+      <div class="grid-2">
+        <input id="fromDate" type="datetime-local" />
+        <input id="toDate" type="datetime-local" />
+        <select id="statusFilter">
+          <option value="">All status</option>
+          <option value="in_progress">in_progress</option>
+          <option value="completed">completed</option>
+          <option value="cancelled">cancelled</option>
+        </select>
+        <button id="applyFilter" class="secondary">Apply Filter</button>
+      </div>
+
+      <div class="cols">
+        <div class="panel">
+          <h2>Trip List</h2>
+          <div id="tripList"></div>
+        </div>
+        <div>
+          <div id="map"></div>
+          <div class="meta">
+            <div id="status">Status: waiting</div>
+            <div id="tripInfo">Trip: -</div>
+            <div id="distanceInfo">Distance: -</div>
+            <div id="durationInfo">Duration: -</div>
+            <div id="pointInfo">Points: -</div>
+          </div>
+          <div id="error" class="error"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    const supabaseUrlInput = document.getElementById("supabaseUrl");
+    const anonKeyInput = document.getElementById("anonKey");
+    const beaconCodeInput = document.getElementById("beaconCode");
+    const pointLimitInput = document.getElementById("pointLimit");
+    const fromDateInput = document.getElementById("fromDate");
+    const toDateInput = document.getElementById("toDate");
+    const statusFilterInput = document.getElementById("statusFilter");
+
+    const statusEl = document.getElementById("status");
+    const tripInfoEl = document.getElementById("tripInfo");
+    const distanceInfoEl = document.getElementById("distanceInfo");
+    const durationInfoEl = document.getElementById("durationInfo");
+    const pointInfoEl = document.getElementById("pointInfo");
+    const errorEl = document.getElementById("error");
+    const tripListEl = document.getElementById("tripList");
+
+    supabaseUrlInput.value = localStorage.getItem("sb_url") || "";
+    anonKeyInput.value = localStorage.getItem("sb_anon") || "";
+    beaconCodeInput.value = localStorage.getItem("sb_beacon_code") || "";
+
+    const map = L.map("map").setView([-6.2, 106.8], 13);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+
+    const line = L.polyline([], { color: "#245f75", weight: 4 }).addTo(map);
+    const pointsLayer = L.layerGroup().addTo(map);
+
+    let sbClient = null;
+    let beaconId = null;
+    let currentTrips = [];
+    let activeTripId = null;
+
+    function setStatus(text, cls = "") {
+      statusEl.className = cls;
+      statusEl.textContent = `Status: ${text}`;
+    }
+
+    function toIsoOrNull(localVal) {
+      if (!localVal) return null;
+      const d = new Date(localVal);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toISOString();
+    }
+
+    function formatDuration(sec) {
+      if (typeof sec !== "number" || !Number.isFinite(sec)) return "-";
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      return `${h}h ${m}m ${s}s`;
+    }
+
+    function formatDistance(meters) {
+      if (typeof meters !== "number" || !Number.isFinite(meters)) return "-";
+      if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
+      return `${meters.toFixed(0)} m`;
+    }
+
+    function clearMap() {
+      line.setLatLngs([]);
+      pointsLayer.clearLayers();
+    }
+
+    function renderTripList(trips) {
+      tripListEl.innerHTML = "";
+
+      if (!trips.length) {
+        tripListEl.textContent = "No trip found.";
+        return;
+      }
+
+      trips.forEach((trip) => {
+        const div = document.createElement("div");
+        div.className = `trip-item${trip.id === activeTripId ? " active" : ""}`;
+        div.dataset.tripId = trip.id;
+
+        const started = trip.started_at ? new Date(trip.started_at).toLocaleString() : "-";
+        const ended = trip.ended_at ? new Date(trip.ended_at).toLocaleString() : "-";
+
+        div.innerHTML = `
+          <strong>${trip.status}</strong><br />
+          Start: ${started}<br />
+          End: ${ended}<br />
+          Distance: ${formatDistance(Number(trip.total_distance_m))}
+        `;
+
+        div.addEventListener("click", () => loadTripPoints(trip));
+        tripListEl.appendChild(div);
+      });
+    }
+
+    async function connectAndLoadTrips() {
+      try {
+        errorEl.textContent = "";
+        clearMap();
+
+        const url = supabaseUrlInput.value.trim();
+        const anon = anonKeyInput.value.trim();
+        const beaconCode = beaconCodeInput.value.trim();
+
+        if (!url || !anon || !beaconCode) {
+          throw new Error("Supabase URL, anon key, dan beacon code wajib diisi.");
+        }
+
+        localStorage.setItem("sb_url", url);
+        localStorage.setItem("sb_anon", anon);
+        localStorage.setItem("sb_beacon_code", beaconCode);
+
+        sbClient = window.supabase.createClient(url, anon, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true
+          }
+        });
+
+        setStatus("finding beacon...");
+
+        const beaconRes = await sbClient
+          .from("beacons")
+          .select("id, beacon_code, name")
+          .eq("beacon_code", beaconCode)
+          .maybeSingle();
+
+        if (beaconRes.error) throw beaconRes.error;
+        if (!beaconRes.data) throw new Error("Beacon code tidak ditemukan.");
+
+        beaconId = beaconRes.data.id;
+        await loadTrips();
+      } catch (err) {
+        setStatus("error", "error");
+        errorEl.textContent = err.message || String(err);
+      }
+    }
+
+    async function loadTrips() {
+      try {
+        setStatus("loading trips...");
+
+        let q = sbClient
+          .from("trips")
+          .select("id, started_at, ended_at, status, total_distance_m, total_duration_s")
+          .eq("beacon_id", beaconId)
+          .order("started_at", { ascending: false })
+          .limit(200);
+
+        const fromIso = toIsoOrNull(fromDateInput.value);
+        const toIso = toIsoOrNull(toDateInput.value);
+        const statusValue = statusFilterInput.value;
+
+        if (fromIso) q = q.gte("started_at", fromIso);
+        if (toIso) q = q.lte("started_at", toIso);
+        if (statusValue) q = q.eq("status", statusValue);
+
+        const { data, error } = await q;
+        if (error) throw error;
+
+        currentTrips = data || [];
+        activeTripId = null;
+        renderTripList(currentTrips);
+
+        if (!currentTrips.length) {
+          tripInfoEl.textContent = "Trip: -";
+          distanceInfoEl.textContent = "Distance: -";
+          durationInfoEl.textContent = "Duration: -";
+          pointInfoEl.textContent = "Points: -";
+          setStatus("no trip", "");
+          return;
+        }
+
+        await loadTripPoints(currentTrips[0]);
+      } catch (err) {
+        setStatus("error", "error");
+        errorEl.textContent = err.message || String(err);
+      }
+    }
+
+    async function loadTripPoints(trip) {
+      try {
+        errorEl.textContent = "";
+        activeTripId = trip.id;
+        renderTripList(currentTrips);
+        setStatus("loading points...");
+
+        const limit = Math.max(100, Number(pointLimitInput.value || 3000));
+        const { data, error } = await sbClient
+          .from("trip_points")
+          .select("seq, recorded_at, latitude, longitude, speed_mps, battery_pct, event_type")
+          .eq("trip_id", trip.id)
+          .order("seq", { ascending: true })
+          .limit(limit);
+
+        if (error) throw error;
+
+        const points = data || [];
+        if (!points.length) {
+          clearMap();
+          setStatus("trip has no points");
+          tripInfoEl.textContent = `Trip: ${trip.id.slice(0, 8)}... (${trip.status})`;
+          distanceInfoEl.textContent = `Distance: ${formatDistance(Number(trip.total_distance_m))}`;
+          durationInfoEl.textContent = `Duration: ${formatDuration(Number(trip.total_duration_s))}`;
+          pointInfoEl.textContent = "Points: 0";
+          return;
+        }
+
+        const latLngs = points.map((p) => [Number(p.latitude), Number(p.longitude)]);
+        line.setLatLngs(latLngs);
+
+        pointsLayer.clearLayers();
+        const start = points[0];
+        const end = points[points.length - 1];
+
+        L.circleMarker([start.latitude, start.longitude], {
+          radius: 6,
+          color: "#216a44",
+          fillOpacity: 0.9
+        }).bindPopup(`Start<br/>${new Date(start.recorded_at).toLocaleString()}`).addTo(pointsLayer);
+
+        L.circleMarker([end.latitude, end.longitude], {
+          radius: 6,
+          color: "#ad3d33",
+          fillOpacity: 0.9
+        }).bindPopup(`End<br/>${new Date(end.recorded_at).toLocaleString()}`).addTo(pointsLayer);
+
+        map.fitBounds(line.getBounds(), { padding: [25, 25] });
+
+        tripInfoEl.textContent = `Trip: ${trip.id.slice(0, 8)}... (${trip.status})`;
+        distanceInfoEl.textContent = `Distance: ${formatDistance(Number(trip.total_distance_m))}`;
+        durationInfoEl.textContent = `Duration: ${formatDuration(Number(trip.total_duration_s))}`;
+        pointInfoEl.textContent = `Points: ${points.length}`;
+        setStatus("loaded", "ok");
+      } catch (err) {
+        setStatus("error", "error");
+        errorEl.textContent = err.message || String(err);
+      }
+    }
+
+    document.getElementById("connectBtn").addEventListener("click", connectAndLoadTrips);
+    document.getElementById("applyFilter").addEventListener("click", loadTrips);
+  </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -27,7 +27,7 @@
       color: var(--ink);
     }
     .wrap {
-      max-width: 980px;
+      max-width: 1080px;
       margin: 20px auto;
       padding: 12px;
     }
@@ -53,6 +53,12 @@
       gap: 10px;
       margin-bottom: 10px;
     }
+    .grid-mode {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
     .grid-telegram {
       display: grid;
       grid-template-columns: 1fr 1fr 180px auto auto;
@@ -60,7 +66,14 @@
       margin-top: 8px;
       margin-bottom: 10px;
     }
-    input, button {
+    .grid-cloud {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr 140px 1fr auto;
+      gap: 10px;
+      margin-top: 8px;
+      margin-bottom: 10px;
+    }
+    input, button, select {
       width: 100%;
       padding: 10px;
       border-radius: 10px;
@@ -108,7 +121,9 @@
     .error { color: var(--warn); }
     @media (max-width: 920px) {
       .grid,
-      .grid-telegram {
+      .grid-mode,
+      .grid-telegram,
+      .grid-cloud {
         grid-template-columns: 1fr;
       }
       #map {
@@ -121,13 +136,27 @@
   <div class="wrap">
     <div class="card">
       <h1 class="title">Beacon Family Viewer</h1>
-      <p class="subtitle">Tracking + Telegram settings in one UI.</p>
+      <p class="subtitle">Tracking + Telegram + Cloud (Supabase) in one UI.</p>
 
       <div class="grid">
         <input id="server" placeholder="Server URL" />
         <input id="rider" placeholder="Rider ID" />
         <input id="key" placeholder="API Key (BEACON_API_KEY)" type="password" />
         <button id="load">Track</button>
+      </div>
+
+      <div class="panel">
+        <h3>Mode Switch</h3>
+        <p>Switch source between local Telegram mode and Cloud mode. On switch, server sends Telegram message.</p>
+        <div class="grid-mode">
+          <select id="relayMode">
+            <option value="telegram">telegram</option>
+            <option value="cloud">cloud</option>
+          </select>
+          <button id="saveMode">Save Mode</button>
+          <button id="refreshMode" class="secondary">Refresh Mode</button>
+        </div>
+        <div id="modeStatus"></div>
       </div>
 
       <div class="panel">
@@ -143,6 +172,22 @@
         <div id="telegramStatus"></div>
       </div>
 
+      <div class="panel">
+        <h3>Cloud (Supabase) Source</h3>
+        <p>Used when mode = cloud. Viewer will query beacons/trips/trip_points directly.</p>
+        <div class="grid-cloud">
+          <input id="sbUrl" placeholder="Supabase URL" />
+          <input id="sbAnon" placeholder="Supabase anon key" type="password" />
+          <input id="sbBeaconCode" placeholder="Beacon code (cloud)" />
+          <input id="sbPointLimit" placeholder="Max points" type="number" min="100" step="100" value="1200" />
+          <select id="sbTripId">
+            <option value="">Latest Trip</option>
+          </select>
+          <button id="refreshTrips" class="secondary">Load Trips</button>
+        </div>
+        <div id="cloudStatus"></div>
+      </div>
+
       <div id="map"></div>
       <div class="meta">
         <div id="status">Status: waiting</div>
@@ -154,15 +199,26 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script>
     const serverInput = document.getElementById("server");
     const riderInput = document.getElementById("rider");
     const keyInput = document.getElementById("key");
+    const relayModeInput = document.getElementById("relayMode");
+    const modeStatusEl = document.getElementById("modeStatus");
+
     const tgTokenInput = document.getElementById("tgToken");
     const tgChatIdInput = document.getElementById("tgChatId");
     const tgMinIntervalInput = document.getElementById("tgMinInterval");
     const telegramStatusEl = document.getElementById("telegramStatus");
+
+    const sbUrlInput = document.getElementById("sbUrl");
+    const sbAnonInput = document.getElementById("sbAnon");
+    const sbBeaconCodeInput = document.getElementById("sbBeaconCode");
+    const sbPointLimitInput = document.getElementById("sbPointLimit");
+    const sbTripIdInput = document.getElementById("sbTripId");
+    const cloudStatusEl = document.getElementById("cloudStatus");
 
     const statusEl = document.getElementById("status");
     const batteryEl = document.getElementById("battery");
@@ -173,6 +229,13 @@
     serverInput.value = localStorage.getItem("beacon_server") || window.location.origin;
     riderInput.value = localStorage.getItem("beacon_rider") || "";
     keyInput.value = localStorage.getItem("beacon_key") || "";
+    relayModeInput.value = localStorage.getItem("beacon_relay_mode") || "telegram";
+
+    sbUrlInput.value = localStorage.getItem("sb_url") || "";
+    sbAnonInput.value = localStorage.getItem("sb_anon") || "";
+    sbBeaconCodeInput.value = localStorage.getItem("sb_beacon_code") || "";
+    sbPointLimitInput.value = localStorage.getItem("sb_point_limit") || "1200";
+    sbTripIdInput.value = localStorage.getItem("sb_trip_id") || "";
 
     const map = L.map("map").setView([-6.2, 106.8], 13);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -184,6 +247,7 @@
     const trackLine = L.polyline([], { color: "#2a7f62", weight: 4 }).addTo(map);
 
     let timer = null;
+    let sbClient = null;
 
     function baseUrl() {
       return serverInput.value.replace(/\/$/, "");
@@ -194,6 +258,23 @@
         "Content-Type": "application/json",
         "x-beacon-key": keyInput.value.trim(),
       };
+    }
+
+    function setModeStatus(text, cls) {
+      modeStatusEl.className = cls || "";
+      modeStatusEl.textContent = text;
+    }
+
+    function saveLocalState() {
+      localStorage.setItem("beacon_server", serverInput.value.trim());
+      localStorage.setItem("beacon_rider", riderInput.value.trim());
+      localStorage.setItem("beacon_key", keyInput.value.trim());
+      localStorage.setItem("beacon_relay_mode", relayModeInput.value);
+      localStorage.setItem("sb_url", sbUrlInput.value.trim());
+      localStorage.setItem("sb_anon", sbAnonInput.value.trim());
+      localStorage.setItem("sb_beacon_code", sbBeaconCodeInput.value.trim());
+      localStorage.setItem("sb_point_limit", sbPointLimitInput.value.trim());
+      localStorage.setItem("sb_trip_id", sbTripIdInput.value.trim());
     }
 
     async function loadServerSettings() {
@@ -211,6 +292,11 @@
         tgChatIdInput.value = data.telegramChatId || "";
         tgMinIntervalInput.value = String(data.telegramMinIntervalSec ?? 120);
 
+        if (data.relayMode === "cloud" || data.relayMode === "telegram") {
+          relayModeInput.value = data.relayMode;
+          localStorage.setItem("beacon_relay_mode", data.relayMode);
+        }
+
         telegramStatusEl.className = "ok";
         telegramStatusEl.textContent = data.telegramEnabled
           ? "Telegram relay: enabled"
@@ -218,6 +304,60 @@
       } catch (err) {
         telegramStatusEl.className = "error";
         telegramStatusEl.textContent = `Load Telegram settings failed: ${err.message}`;
+      }
+    }
+
+    async function loadMode() {
+      const key = keyInput.value.trim();
+      if (!key) return;
+
+      try {
+        const res = await fetch(`${baseUrl()}/api/v1/mode`, {
+          headers: { "x-beacon-key": key },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        relayModeInput.value = data.relayMode || "telegram";
+        setModeStatus(`Current mode: ${relayModeInput.value}`, "ok");
+      } catch (err) {
+        setModeStatus(`Load mode failed: ${err.message}`, "error");
+      }
+    }
+
+    async function saveMode() {
+      const key = keyInput.value.trim();
+      if (!key) {
+        setModeStatus("API key required.", "error");
+        return;
+      }
+
+      try {
+        const payload = { relayMode: relayModeInput.value };
+        const res = await fetch(`${baseUrl()}/api/v1/mode`, {
+          method: "PUT",
+          headers: apiHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+
+        localStorage.setItem("beacon_relay_mode", body.relayMode);
+        setModeStatus(
+          body.switched
+            ? `Switched to ${body.relayMode}. Telegram switch notification sent.`
+            : `Mode tetap ${body.relayMode}.`,
+          "ok"
+        );
+
+        if (body.relayMode === "cloud") {
+          cloudStatusEl.className = "ok";
+          cloudStatusEl.textContent = "Mode cloud aktif. Viewer akan cek data ke Supabase.";
+        }
+      } catch (err) {
+        setModeStatus(`Save mode failed: ${err.message}`, "error");
       }
     }
 
@@ -282,7 +422,7 @@
       }
     }
 
-    async function fetchTrack() {
+    async function fetchTrackTelegram() {
       const base = baseUrl();
       const riderId = riderInput.value.trim();
       const key = keyInput.value.trim();
@@ -294,33 +434,162 @@
       const latestUrl = `${base}/api/v1/rider/${encodeURIComponent(riderId)}/latest?key=${encodeURIComponent(key)}`;
       const historyUrl = `${base}/api/v1/rider/${encodeURIComponent(riderId)}/history?limit=200&key=${encodeURIComponent(key)}`;
 
+      const [latestRes, historyRes] = await Promise.all([fetch(latestUrl), fetch(historyUrl)]);
+      if (!latestRes.ok || !historyRes.ok) {
+        throw new Error(`HTTP ${latestRes.status}/${historyRes.status}`);
+      }
+
+      const latest = await latestRes.json();
+      const history = await historyRes.json();
+
+      const latLng = [latest.lat, latest.lon];
+      marker.setLatLng(latLng);
+      marker.bindPopup(`Rider: ${latest.riderId}`).openPopup();
+
+      trackLine.setLatLngs(history.map((p) => [p.lat, p.lon]));
+
+      map.setView(latLng, Math.max(map.getZoom(), 15));
+
+      statusEl.textContent = "Status: online (telegram/local)";
+      batteryEl.textContent = `Battery: ${latest.battery ?? "-"}%`;
+      modeEl.textContent = `Mode: ${latest.mode ?? "-"}`;
+      timeEl.textContent = `Last update: ${latest.receivedAt ?? latest.timestamp}`;
+      cloudStatusEl.className = "";
+      cloudStatusEl.textContent = "";
+    }
+
+    function getSbClient() {
+      const url = sbUrlInput.value.trim();
+      const anon = sbAnonInput.value.trim();
+      if (!url || !anon) {
+        throw new Error("Supabase URL dan anon key wajib diisi untuk mode cloud.");
+      }
+
+      if (!sbClient || sbClient.__url !== url) {
+        sbClient = window.supabase.createClient(url, anon);
+        sbClient.__url = url;
+      }
+
+      return sbClient;
+    }
+
+    function formatTripOption(trip) {
+      const started = trip.started_at ? new Date(trip.started_at).toLocaleString() : "-";
+      return `${started} | ${trip.status} | ${trip.id.slice(0, 8)}`;
+    }
+
+    async function loadCloudTrips() {
+      const beaconCode = sbBeaconCodeInput.value.trim();
+      if (!beaconCode) {
+        throw new Error("Beacon code cloud wajib diisi.");
+      }
+
+      const client = getSbClient();
+      const beaconRes = await client
+        .from("beacons")
+        .select("id, beacon_code")
+        .eq("beacon_code", beaconCode)
+        .maybeSingle();
+      if (beaconRes.error) throw beaconRes.error;
+      if (!beaconRes.data) throw new Error("Beacon cloud tidak ditemukan.");
+
+      const tripsRes = await client
+        .from("trips")
+        .select("id, started_at, ended_at, status, total_distance_m")
+        .eq("beacon_id", beaconRes.data.id)
+        .order("started_at", { ascending: false })
+        .limit(100);
+      if (tripsRes.error) throw tripsRes.error;
+
+      const trips = tripsRes.data || [];
+      sbTripIdInput.innerHTML = "<option value=\"\">Latest Trip</option>";
+      for (const trip of trips) {
+        const opt = document.createElement("option");
+        opt.value = trip.id;
+        opt.textContent = formatTripOption(trip);
+        sbTripIdInput.appendChild(opt);
+      }
+
+      const storedTripId = localStorage.getItem("sb_trip_id") || "";
+      if (storedTripId && trips.some((t) => t.id === storedTripId)) {
+        sbTripIdInput.value = storedTripId;
+      } else {
+        sbTripIdInput.value = "";
+      }
+
+      cloudStatusEl.className = "ok";
+      cloudStatusEl.textContent = `Mode cloud aktif, ${trips.length} trip ditemukan.`;
+      return { beaconId: beaconRes.data.id, trips };
+    }
+
+    async function fetchTrackCloud() {
+      const beaconCode = sbBeaconCodeInput.value.trim();
+      if (!beaconCode) {
+        throw new Error("Beacon code cloud wajib diisi.");
+      }
+
+      const client = getSbClient();
+      const { beaconId, trips } = await loadCloudTrips();
+      if (!trips.length) throw new Error("Belum ada trip di cloud.");
+
+      let selectedTrip = null;
+      if (sbTripIdInput.value) {
+        selectedTrip = trips.find((t) => t.id === sbTripIdInput.value) || null;
+      }
+      if (!selectedTrip) {
+        selectedTrip = trips[0];
+        sbTripIdInput.value = selectedTrip.id;
+      }
+      localStorage.setItem("sb_trip_id", sbTripIdInput.value);
+
+      const tripRes = await client
+        .from("trips")
+        .select("id, status, started_at, ended_at, total_distance_m, total_duration_s")
+        .eq("beacon_id", beaconId)
+        .eq("id", selectedTrip.id)
+        .maybeSingle();
+      if (tripRes.error) throw tripRes.error;
+      if (!tripRes.data) throw new Error("Trip yang dipilih tidak ditemukan.");
+
+      const pointLimit = Math.max(100, Number(sbPointLimitInput.value || "1200"));
+      const pointsRes = await client
+        .from("trip_points")
+        .select("seq, recorded_at, latitude, longitude, battery_pct, speed_mps")
+        .eq("trip_id", tripRes.data.id)
+        .order("seq", { ascending: true })
+        .limit(pointLimit);
+
+      if (pointsRes.error) throw pointsRes.error;
+      const points = pointsRes.data || [];
+      if (!points.length) throw new Error("Trip cloud tidak punya titik.");
+
+      const latest = points[points.length - 1];
+      const latLng = [Number(latest.latitude), Number(latest.longitude)];
+      marker.setLatLng(latLng);
+      marker.bindPopup(`Beacon: ${beaconCode}`).openPopup();
+
+      trackLine.setLatLngs(points.map((p) => [Number(p.latitude), Number(p.longitude)]));
+      map.fitBounds(trackLine.getBounds(), { padding: [24, 24] });
+
+      const dist = Number(tripRes.data.total_distance_m);
+      const distText = Number.isFinite(dist)
+        ? dist >= 1000 ? `${(dist / 1000).toFixed(2)} km` : `${dist.toFixed(0)} m`
+        : "-";
+
+      statusEl.textContent = "Status: online (cloud/supabase)";
+      batteryEl.textContent = `Battery: ${latest.battery_pct ?? "-"}%`;
+      modeEl.textContent = `Mode: cloud (${tripRes.data.status})`;
+      timeEl.textContent = `Last update: ${latest.recorded_at} | Distance: ${distText}`;
+    }
+
+    async function fetchTrackByMode() {
       try {
         errorEl.textContent = "";
-
-        const [latestRes, historyRes] = await Promise.all([
-          fetch(latestUrl),
-          fetch(historyUrl),
-        ]);
-
-        if (!latestRes.ok || !historyRes.ok) {
-          throw new Error(`HTTP ${latestRes.status}/${historyRes.status}`);
+        if (relayModeInput.value === "cloud") {
+          await fetchTrackCloud();
+        } else {
+          await fetchTrackTelegram();
         }
-
-        const latest = await latestRes.json();
-        const history = await historyRes.json();
-
-        const latLng = [latest.lat, latest.lon];
-        marker.setLatLng(latLng);
-        marker.bindPopup(`Rider: ${latest.riderId}`).openPopup();
-
-        trackLine.setLatLngs(history.map((p) => [p.lat, p.lon]));
-
-        map.setView(latLng, Math.max(map.getZoom(), 15));
-
-        statusEl.textContent = "Status: online";
-        batteryEl.textContent = `Battery: ${latest.battery ?? "-"}%`;
-        modeEl.textContent = `Mode: ${latest.mode ?? "-"}`;
-        timeEl.textContent = `Last update: ${latest.receivedAt ?? latest.timestamp}`;
       } catch (err) {
         statusEl.textContent = "Status: waiting data";
         errorEl.textContent = `Unable to load: ${err.message}`;
@@ -328,24 +597,46 @@
     }
 
     document.getElementById("load").addEventListener("click", async () => {
-      localStorage.setItem("beacon_server", serverInput.value.trim());
-      localStorage.setItem("beacon_rider", riderInput.value.trim());
-      localStorage.setItem("beacon_key", keyInput.value.trim());
+      saveLocalState();
 
       if (timer) {
         clearInterval(timer);
       }
 
       await loadServerSettings();
-      fetchTrack();
-      timer = setInterval(fetchTrack, 15000);
+      await loadMode();
+      await fetchTrackByMode();
+      timer = setInterval(fetchTrackByMode, 15000);
     });
 
+    document.getElementById("saveMode").addEventListener("click", async () => {
+      saveLocalState();
+      await saveMode();
+      await fetchTrackByMode();
+    });
+
+    document.getElementById("refreshMode").addEventListener("click", loadMode);
+    document.getElementById("refreshTrips").addEventListener("click", async () => {
+      saveLocalState();
+      try {
+        await loadCloudTrips();
+      } catch (err) {
+        cloudStatusEl.className = "error";
+        cloudStatusEl.textContent = `Load trips failed: ${err.message}`;
+      }
+    });
     document.getElementById("saveTelegram").addEventListener("click", saveServerSettings);
     document.getElementById("testTelegram").addEventListener("click", testTelegram);
+    sbTripIdInput.addEventListener("change", () => {
+      localStorage.setItem("sb_trip_id", sbTripIdInput.value);
+      if (relayModeInput.value === "cloud") {
+        fetchTrackByMode();
+      }
+    });
 
     if (keyInput.value.trim()) {
       loadServerSettings();
+      loadMode();
     }
   </script>
 </body>

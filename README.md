@@ -22,6 +22,7 @@ npm start
 Server runs on `http://localhost:8080` by default.
 
 Viewer page: `http://localhost:8080`
+Supabase viewer page: `http://localhost:8080/supabase-viewer.html`
 
 ## Telegram Bot Option (Optional)
 
@@ -96,6 +97,15 @@ Open the server web page, fill same:
 
 Then click `Track`.
 
+### Mode Switch (Telegram vs Cloud)
+
+Viewer now has `relayMode` switch:
+
+- `telegram`: map reads local server rider endpoint (`/api/v1/rider/...`).
+- `cloud`: map reads Supabase tables (`beacons`, `trips`, `trip_points`).
+
+When mode is changed from UI, server sends a Telegram notification message describing the switch.
+
 ## Battery-Efficient Defaults
 
 Implemented battery-saving decisions:
@@ -112,6 +122,38 @@ Implemented battery-saving decisions:
 - Use strong random `BEACON_API_KEY`.
 - Add database (PostgreSQL/SQLite) if you need persistent history.
 - Add per-family accounts and rider sharing permissions.
+
+## Supabase PostgreSQL Setup (Trip + Point History)
+
+For persistent trip tracking on Supabase:
+
+1. Open Supabase SQL Editor.
+2. Run SQL file:
+   - `beacon-server/sql/supabase_schema.sql`
+3. (Optional) create a test beacon row in `public.beacons`.
+4. Open local UI:
+   - `http://localhost:8080/supabase-viewer.html`
+5. Fill:
+   - Supabase URL
+   - Supabase anon key
+   - Beacon code
+
+This viewer loads trips from `trips` and route points from `trip_points`, then draws path and start/end markers on map.
+
+### Dummy Data for Cloud Test
+
+Run:
+
+- `migrations/seed_dummy.sql`
+
+After that, use cloud mode with beacon code:
+
+- `BEACON-DEMO-001`
+
+Seed profile in this file:
+
+- `10 trips x 2000 points` (total `20000` points)
+- Cloud panel supports loading trip list and selecting a specific trip.
 
 ## Important Android Notes
 
